@@ -1,0 +1,683 @@
+{% extends 'base.html' %}
+{% block style %}
+<style>
+    @media screen and (orientation: landscape) and ( max-width: 720px) {
+    :root{
+        --game-container-interspacing:80;
+    }
+    body>*{
+       display:none;
+    }
+    body{
+        background-color: #1d6962;
+        position: relative;
+        width:100vw;
+        height:100vh;
+    }
+    body::before{
+        content:"Please rotate your device";
+        color:#fff;
+        width:100%;
+        top:50%;
+        left:50%;
+        transform: translate(-50%,-50%);
+        position: absolute;
+        text-align: center;
+    }
+    body::after{
+        content:"Game doesn't support landscape, please play the game in portrait mode";
+        color:#fff;
+        width:100%;
+        font-size:0.75rem;
+        position: absolute;
+        top:58%;
+        text-align: center;
+        transform:translate(-50%,-50%);
+        left:50%;
+    }
+  
+
+}
+</style>
+{% endblock style %}
+{% block content%}
+<div class="game-container-parent">
+    <div>
+        <div class="game-mode-level">
+            {% if mode==0 %}
+                <span class="game-mode"><span class="user-name">Player</span> &nbsp;v/s Computer</span>
+                <span class="game-level">
+                    <select id="game-level" aria-level="game-level" onchange="restartGame()">
+                        <option value="easy">Easy</option>
+                        <option value="hard">Hard</option>
+                    </select>
+                    <span class="custom-arrow"></span>
+                </span>
+            {% else %}
+                {% if mode==1%}
+                    <span class="game-opponent">
+                        <span class="game-mode"> <span class="player1-letter"></span><span class="user-name">Player</span> &nbsp;v/s Other Player <span class="player2-letter"></span></span>
+                    </span>
+                {% endif %}
+            {% endif %}
+        </div>
+        <div class="game-score">
+            <div class="x-score">
+                <span class="score-name">X</span>
+                <span class="score-value">-</span>
+            </div>
+            <div class="o-score">
+                <span class="score-name">O</span>
+                <span class="score-value">-</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="game-msg"></div>
+    <div class="game-containers">
+        <div class="game-container-1">
+            <div data-index='0'><span></span></div>
+            <div data-index='1'><span></span></div>
+            <div data-index='2'><span></span></div>
+        </div>
+        <div class="game-container-2">
+            <div data-index='3'><span></span></div>
+            <div data-index='4'><span></span></div>
+            <div data-index='5'><span></span></div>
+        </div>
+        <div class="game-container-3">
+            <div data-index='6'><span></span></div>
+            <div data-index='7'><span></span></div>
+            <div data-index='8'><span></span></div>
+        </div>
+    </div>
+    <div class="game-result"></div>
+    <span class="bottom-border"></span>
+    <div class="restart-game" onclick="restartGame()">Restart Game</div>
+</div>
+{% endblock content %}
+{% block script %}
+<script>
+    const game_container_parent=document.querySelector(".game-container-parent");
+    const game_result=game_container_parent.querySelector(".game-result");
+    const game_msg=game_container_parent.querySelector(".game-msg");
+    const game_score=game_container_parent.querySelector(".game-score");
+    const player1_tag=game_container_parent.querySelector(".game-mode .player1-letter");
+    const player2_tag= game_container_parent.querySelector(".game-mode .player2-letter");
+    const game_level=document.querySelector("select");
+
+    const mid_point=5;
+    //Used to tell compurter whether it call 'getMoveResult'  function or or not.
+    //We make call to getMoveResult only when board filled by more than half.
+
+    const mode=parseInt("{{ mode}}");
+    //Used to selected between player v/s player mode or player v/s computer mode.
+
+    const url=base_url+"/hardmode";
+    //Thus url is use to get move from computer, when player plays in hard level of player v/s computer mode. 
+    
+    
+    const user_id=Math.random();
+    //User id for player v/s computer mode in hard level.
+
+    const user_name_tag2=document.querySelector(".user-name");
+
+
+    // Variables used for player v/s player mode.
+    let player1_selected=false;
+    let player1_letter="";
+    let player2_letter="";
+    let player1_placed_move=false;
+    let player2_placed_move=false;
+
+
+    //variables used for player v/s computer mode.
+    let user_selected=false;
+    let user_letter;
+    let game_stared=false;
+    let user_placed_move;
+    let computer_placed_move=false;
+    let computer_letter;
+
+    //available position container to store available position.
+    let available_pos="012345678";
+
+    // check whether outcome of game is tie or nor.
+    let game_tie=false;
+
+    //variable to store the winner of current game.
+    let current_winner=""
+
+    let game_info_height_percent=1-(parseInt(getComputedStyle(root).getPropertyValue("--game-info-height").split("%")[0])+2)/100;
+
+    // Container Array used to store player(human or computer) move("X"/"O") and to show move.
+    let container_array=Array.from(game_container_parent.querySelectorAll("[data-index]"));
+
+    //Array represntation of board.
+    let game_board=[];
+
+    //variable used to indicate whether it is new game or not.
+    let first_time=true;
+
+    //Initital msg for player
+    let mode1_initial_msg="start game";
+    let mode0_initial_msg="start game or select level";
+
+    //Show different game messages to player(like whose turn is, is game over).
+     function showgameMsg(player_letter,msg=""){
+         game_msg.innerHTML=`<span class="black">${player_letter.toUpperCase()}</span> <span class='dark-gray'> ${msg}</span> `;
+     }
+
+    //Modify the container to show player(human or computer) position available for their next move.
+    function upadateAvailablePos(index){
+        let regx=new RegExp(index,'gi');
+        available_pos=available_pos.replace(regx,"");
+    }
+
+    //Reset the board to initial condition for next game.
+    function resetBoard(){
+        let index=0;
+
+        //Empty the container Array
+        container_array.forEach((parent)=>{
+            if(parent.lastElementChild.classList.contains("cross")){
+                parent.lastElementChild.classList.remove("cross");
+            }
+            else{
+                parent.lastElementChild.classList.remove("circle")
+            }
+
+            // Empty the board
+           game_board[index]="";
+            index++;
+        });
+        //Initialize the board for next game.
+        available_pos="012345678";
+        current_winner="";
+        game_tie=false;
+
+        //Initialize the variables for next game
+        if(mode==1){
+            if(player1_letter.toUpperCase()==="X"){
+                player1_placed_move=false;
+                player2_placed_move=true;
+                player_letter=player1_letter;
+                other_letter=player2_letter;
+            }
+            else{
+                player1_placed_move=true;
+                player2_placed_move=false;
+                player_letter=player2_letter;
+                other_letter=player1_letter;
+            }
+
+            //Show the player that next game has been started.
+            game_score.querySelector(`.${player_letter.toLowerCase()}-score`).classList.add("user-choice");
+            game_score.querySelector(`.${other_letter.toLowerCase()}-score`).classList.remove("user-choice");
+            showgameMsg(player_letter,msg="Turn");
+
+        }
+    }
+    //Delete all previous game result and start a fresh new game .
+    function restartGame(){
+        resetBoard();
+        
+        Array.from(game_score.children).forEach((score_parent)=>{
+            score_parent.lastElementChild.textContent="-";
+            score_parent.classList.remove("user-choice");
+        });
+        if(mode==0){
+            showgameMsg("",mode0_initial_msg);
+            user_selected=false;
+            //In case of hard level tell the server that fresh game has started.
+            if (game_level.value=="hard"){
+                let data={"user_id":user_id,"delete_obj":true};
+                let payload={"method":'POST',"headers":{"Content-Type":'application/json'},'body':JSON.stringify(data)};
+                fetch(url,payload)
+                .then((resp)=>resp);
+            }
+        }
+        else if(mode==1) {
+            player1_tag.innerHTML="";
+            player2_tag.innerHTML="";
+            player1_selected=false;
+            showgameMsg("",mode1_initial_msg);
+        }
+    }
+
+    //Display th game winner.
+    function showWinner(){
+        let res;
+        //Display the winner of game.
+        game_result.classList.add("full-scale");
+
+        //Indicate that game has ended. 
+        first_time=false;
+        if (game_tie){
+            res=`<span class="result-msg"><span class="result-msg brown large-font">X</span><span class="result-msg white large-font">O</span> </span><span class="result-msg brown medium-font">DRAW!</span>`;
+        }
+        else{
+            if (current_winner.toUpperCase() == 'X'){
+                res=`<span class="result-msg brown large-font">${current_winner}</span> <span class="result-msg brown medium-font">WINNER!</span>`;
+            }
+            else{
+                res=`<span class="result-msg white large-font">${current_winner}</span> <span class="result-msg brown medium-font">WINNER!</span>`;
+            }
+            //Incease the score of winner.
+            let score_class="."+current_winner+"-score .score-value";
+            let score=game_score.querySelector(score_class.toLowerCase());
+            let score_value=parseInt(score.textContent);
+            //If it is first has win, change the score to 1 from undefiend.
+            if(isFinite(score_value)){
+                score_value+=1;
+            }
+            else{
+                score_value=1;
+            }
+            score.textContent=score_value;
+        }
+        game_result.innerHTML=res;
+        //Show player that game has ended.
+        showgameMsg("",msg="Game Over");
+        resetBoard();
+
+        game_result.addEventListener("click",function(e){
+            this.classList.remove("full-scale");
+            if(mode==0)showgameMsg("",mode0_initial_msg);
+        });
+    }
+
+    //Used to tell player whether current move decided the winner or not.
+    function getMoveResult(start_index,player_letter){
+        let player_win=true;
+        //Here considered that board is of size3X3
+        let row_index=Math.floor(start_index/3);
+        let col_index=Math.floor(start_index%3);
+        //row check
+        for(let col=0;col<3;col++){
+            let index=(3*row_index)+col;
+            if(game_board[index].toUpperCase()!=player_letter.toUpperCase()){
+                player_win=false;
+                break;
+            }
+        }
+        //column check
+         if(!player_win){
+            player_win=true;
+            for(let row=0;row<3;row++){
+                let index=(3*row)+col_index;
+                if(game_board[index].toUpperCase()!=player_letter.toUpperCase()){
+                    player_win=false;
+                    break;
+                }
+            }
+         }
+         //diagonal check
+         if(!player_win){
+             if(!((row_index==1 && col_index!=1) || (row_index!=1 && col_index==1))){
+                 if(row_index==col_index){
+                     player_win=true;
+                     for(let i=0;i<3;i++){
+                        let index=(3*i)+i;
+                        if(game_board[index].toUpperCase()!=player_letter.toUpperCase()){
+                            player_win=false;
+                            break;
+                        }  
+                     }
+                 }
+                  if ((row_index!=col_index)||(row_index==1)){
+                    player_win=true;
+                     for(let i=0;i<3;i++){
+                        let index=(3*i)+(2-i);
+                        if(game_board[index].toUpperCase()!=player_letter.toUpperCase()){
+                            player_win=false;
+                            break;
+                        }  
+                     }
+                 }
+             }
+         }
+      if(!player_win && available_pos.length==0) game_tie=true;
+      return player_win;
+    }
+    //Register the computer move to board.
+    function addComputerMove(computer_pos){
+        //Used when computer has selected "X"
+        if(computer_letter.toUpperCase()==="X"){
+            if(game_level.value==="easy"){
+                game_container_parent.querySelector(`div [data-index='${available_pos.charAt(computer_pos)}']`).lastElementChild.classList.add("cross");
+            }
+            else{
+                game_container_parent.querySelector(`div [data-index='${computer_pos}']`).lastElementChild.classList.add("cross");
+            }
+
+           
+        }
+        //Used when computer has selected "O"
+        else{
+            if(game_level.value==="easy"){
+             game_container_parent.querySelector(`div [data-index='${available_pos.charAt(computer_pos)}']`).lastElementChild.classList.add("circle");
+            }
+            else{
+                game_container_parent.querySelector(`div [data-index='${computer_pos}']`).lastElementChild.classList.add("circle");
+            }
+        }
+
+        //variable to store position value selected by computer 
+        let index;
+
+        if(game_level.value==="easy"){
+            index=available_pos.charAt(computer_pos);
+
+            //Register the position to board with letter selected by computer.
+            game_board[parseInt(index)]=computer_letter;
+        }
+        else{
+            index=computer_pos.toString();
+
+            //Register the position to board with letter selected by computer.
+            game_board[computer_pos]=computer_letter;
+        }
+        //Remove the position from availble position container.
+        upadateAvailablePos(index);
+       
+        if((available_pos.length>mid_point) || (!getMoveResult(parseInt(index),computer_letter))){
+            if(game_tie){
+                current_winner="X O";
+                showWinner();
+            } 
+            else{
+
+                computer_placed_move=true;//Used to tell that computer has placed its move on board.
+                user_placed_move=false;//Used to tell its player turn.
+            }
+        }
+        else{
+            current_winner=computer_letter;
+            showWinner();
+        }
+        showgameMsg(user_letter,"Turn");
+    }
+    //Used for computer in  player v/s computer mode.
+    function computerTurn(){
+        let total_available_pos=available_pos.length;
+        //If game  level is easy then all the calculation needed to place move on board is done on client side.
+        if(game_level.value=="easy"){
+            if (total_available_pos>0){
+                let computer_pos=Math.max(0,(Math.round(Math.random()*total_available_pos)-1));
+                addComputerMove(computer_pos);
+            }
+        }
+        //If game level is hard then ask the server to get the next move.
+        //To get the move, client send the board status, used id and computer letter to server.
+        else{
+            let data={"user_id":user_id,"available_pos":available_pos,"board":game_board,"letter":computer_letter,"game_tie":game_tie};
+            let payload={"method":'POST',"headers":{"Content-Type":'application/json'},'body':JSON.stringify(data)};
+            fetch(url,payload)
+            .then((resp)=>resp.json())
+            .then((data)=>{
+                addComputerMove(data.pos)});
+        }
+  
+    }
+    //Used for human in player v/s computer mode
+    function userTurn(self){
+        if(first_time){
+            //check whether user selected letter or not.
+            if(user_selected){
+                if(computer_placed_move){
+                    if(!(self.lastElementChild.classList.contains("cross") || self.lastElementChild.classList.contains("circle"))){
+                        if(user_letter.toUpperCase()==="X"){
+                            self.lastElementChild.classList.add("cross")
+                        }
+                        else if(user_letter.toUpperCase()==="O"){
+                            self.lastElementChild.classList.add("circle")
+                        }
+                        user_placed_move=true;
+                    } 
+                    else{
+                        user_placed_move=false;
+                    } 
+                }
+            }
+            //If user has not selected letter then select 'X'  for human player and 'O' for computer player.
+            else{
+                user_selected=true;
+                user_letter="X";
+                computer_letter="O";
+                let user_selected_class="X-score";
+
+                //Highlight the letter to show which letter has been selected by human player
+                game_score.querySelector(`.${user_selected_class.toLowerCase()}`).classList.add("user-choice");
+                self.lastElementChild.classList.add("cross");
+                user_placed_move=true;
+                computer_placed_move=true;
+            }
+            if(user_placed_move && computer_placed_move){
+                computer_placed_move=false;
+
+                //Get the position selected by human player.
+                let index=self.dataset.index;
+
+                //Register the position in the board with letter selected by human player. 
+                game_board[parseInt(index)]=user_letter;
+
+                //remove the position from available position container.
+                upadateAvailablePos(index);
+
+
+                //Check whether current move of human player has decided the winner or not.
+                //If current winner has decided show on window screen.
+                if((available_pos.length>mid_point) || (!getMoveResult(parseInt(index),user_letter))){
+                    if(game_tie){
+                        current_winner="X O";
+                        showWinner();
+                    }
+                    else setTimeout(computerTurn, 800);   
+                }
+                else{
+                    current_winner=user_letter;
+                    showWinner();
+                }
+                //Tell that now computer has turn
+                showgameMsg(computer_letter,"Turn");
+            }
+        }
+        else{
+            //Start new game.
+            first_time=true;
+
+            //Decide whose turn is depending on letter selected by human player and computer player.
+            if(user_letter.toUpperCase()=="X"){
+                computer_placed_move=true;
+                user_placed_move=false;
+                userTurn(self);
+            }
+            else{
+                computerTurn();
+            }
+        }
+    };
+
+    //Show move placed by human player on window screen.
+    function addPlayerMove(player_letter,self){
+        other_player_letter=(player_letter.toUpperCase()==="X")?"O":"X"
+        if(player_letter.toUpperCase()==="X"){
+            self.lastElementChild.classList.add("cross")
+        }
+        else if(player_letter.toUpperCase()==="O"){
+            self.lastElementChild.classList.add("circle")
+        }
+        showgameMsg(other_player_letter,msg="Turn");
+        game_score.querySelector(`.${player_letter.toLowerCase()}-score`).classList.toggle("user-choice");
+        game_score.querySelector(`.${other_player_letter.toLowerCase()}-score`).classList.toggle("user-choice");
+        
+    }
+
+    //user for player v/s player mode
+    function playersTurn(self){
+
+        //Get the position selected by either player1 or player2.
+        let index=parseInt(self.dataset.index);
+
+        //store the letter selected by either player1 or player2
+        let selected_letter;
+    
+        //If first player has selected letter.
+        if(player1_selected){
+
+
+            // player1(first player) turn
+            if(!player1_placed_move){
+                if(!(self.lastElementChild.classList.contains("cross") || self.lastElementChild.classList.contains("circle"))){
+                    addPlayerMove(player1_letter,self);
+
+                    //store player1 letter
+                    selected_letter=player1_letter;
+
+                    showgameMsg(player2_letter,msg="Turn");
+
+                    //Indicate that player1 has placed his move and next is player2's turn.
+                    player1_placed_move=true;
+                    player2_placed_move=false;
+                    
+                }
+                else{
+                    //player1's turn.
+                    player1_placed_move=false;
+                    player2_placed_move=true;
+                } 
+           
+            }
+
+            //player2(second player) turn
+            else if(!player2_placed_move){
+                if(!(self.lastElementChild.classList.contains("cross") || self.lastElementChild.classList.contains("circle"))){
+                    addPlayerMove(player2_letter,self);
+
+                    //store player2 letter
+                    selected_letter=player2_letter;
+
+                    //Indicate that player2 has placed his move and next is player1's turn.
+                    player1_placed_move=false;
+                    player2_placed_move=true;
+                }
+                else{
+
+                    //player2's turn.
+                    player1_placed_move=true;
+                    player2_placed_move=false;
+                }   
+            }
+        }
+
+        //If first player has not selected letter then letter 'X' is selected for first player and 'O' is selected for second player.
+        else{
+            player1_letter="X";
+            player2_letter="O";
+            player1_selected=true;
+            player1_tag.innerHTML=`(X)`;
+            player2_tag.innerHTML=`(O)`;
+            self.lastElementChild.classList.add("cross");
+            selected_letter=player1_letter;
+            showgameMsg(player2_letter,msg="Turn");
+            game_score.querySelector(`.${player2_letter.toLowerCase()}-score `).classList.add("user-choice");
+
+            //Indicate that player1 has placed his move and next is player2's turn.
+            player1_placed_move=true;
+            player2_placed_move=false;
+        }
+        //register the position selected by player1 or player2 in the board.
+        game_board[index]=selected_letter;
+
+        //Decrease the available position.
+        upadateAvailablePos(index.toString());
+
+        //If player move decided the winner then show winner, Else continue.
+        if(available_pos.length<mid_point && getMoveResult(index,selected_letter)){
+            current_winner=selected_letter;
+            showWinner();
+        }
+        if(game_tie){
+            showWinner();
+            current_winner="X O";
+        }
+
+    }
+    //Create a clickable 3x3 box for player.
+    Array.from(game_score.querySelectorAll("div")).forEach((score_name)=>{
+        score_name.addEventListener('click',function(e){
+            let selected_letter=this.querySelector(".score-name").textContent;
+            if(mode==0){
+                if(!user_selected){
+                    user_selected=true;
+                    user_placed_move=false;
+                    user_letter=selected_letter;
+                    this.classList.add("user-choice");
+                    computer_letter=(user_letter.toUpperCase()==="X")?'O':'X';
+                    if(computer_letter.toUpperCase()==="O") computer_placed_move=true;
+                    else computerTurn();
+                }
+            }
+            else if(mode==1){
+                if(!player1_selected){
+                    player1_selected=true;
+                    player1_letter=selected_letter;
+                    player2_letter=(player1_letter.toUpperCase()==="X")?"O":"X";
+                    player1_tag.innerHTML=`(${player1_letter})`;
+                    player2_tag.innerHTML=`(${player2_letter})`;
+                    if(player1_letter.toUpperCase()=="X"){
+                        player1_placed_move=false;
+                        player2_placed_move=true;
+                        game_score.querySelector(`.${player1_letter.toLowerCase()}-score`).classList.add("user-choice");
+                        showgameMsg(player1_letter,msg="Turn");
+                    }
+                    else{
+                        player1_placed_move=true;
+                        player2_placed_move=false;
+                        game_score.querySelector(`.${player2_letter.toLowerCase()}-score`).classList.add("user-choice");
+                        showgameMsg(player2_letter,msg="Turn");
+                    }
+                }
+            } 
+        });
+    });
+    
+    //Initiate the game
+    container_array.forEach((data_obj)=>{
+        data_obj.lastElementChild.classList.add("initial");
+        game_board.push("");
+        data_obj.addEventListener('click',function(){
+            if(mode==0){
+                userTurn(this);
+            }
+            else if(mode==1){
+                playersTurn(this);
+            }
+        });
+    });
+
+    function resizeGameContainer(){
+        const index_spacing=parseInt(getComputedStyle(root).getPropertyValue("--game-container-interspacing"));
+        let window_height=window.innerHeight || document.body.clientHeight || document.documentElement.clientHeight;
+        let window_width=window.innerWidth || document.body.clientWidth || document.documentElement.clientWidth;
+        let min_size=parseInt((Math.min(window_width,(game_info_height_percent*window_height))-index_spacing)/3)-24;
+        game_container_parent.style.height=window_height+"px";
+        Array.from(game_container_parent.querySelectorAll("[data-index]")).forEach((data_index)=>{
+            data_index.style.height=min_size+"px";
+            data_index.style.width=min_size+"px";
+        });
+        let containers_top=game_container_parent.querySelector(".game-containers").offsetTop;
+        game_result.style.top=containers_top+"px";
+        game_result.style.height=(window_height-containers_top)+"px";
+        if(mode==0)showgameMsg("",mode0_initial_msg);
+        else showgameMsg("",mode1_initial_msg);
+    }
+    window.addEventListener("resize",resizeGameContainer);
+    window.addEventListener("load", function(e){
+        if(user_name!==""){
+            user_name_tag2.innerHTML=user_name.trim();
+        }
+        resizeGameContainer()});
+</script>
+{% endblock script %}

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600&family=Sofia&display=swap" >
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='style.css')}}?q={{random}}">
+    {% block style %}
+    {% endblock style %}
+    <title>TICTACTOE</title>
+</head>
+<body>
+    <header>
+        <a href="{{url_for('main.home')}}" class="back-btn add-negmargin-left"><img src="{{url_for('static',filename='img/back-btn.png')}}" alt="back"/></a>
+        <div class="game-name"> Tic Tac Toe</div>
+        <div>
+            <span class="user-info"></span>
+            <span class="img-container">
+                <img  src="{{url_for('static',filename='img/any-user.png')}}" alt="user-image">
+            </span>
+        </div>
+    </header>
+    <main>
+        {% if not verified %}
+            <div class="sign-in-container">
+                <div class="sign-in">
+                    <div class="name">
+                        <input id="user-name" name="user-name" type=text maxlength=12  placeholder="User name"  required/>
+                        <label for="user-name"></label>
+                    </div>
+                    <div  class="user-avatar-parent">
+                        <span>Choose your avatar:</span>
+                        <div class="user-avatar">
+                            <span class="transformed-span"><img src="{{url_for('static',filename='img/any-user.png')}}" /></span>
+                            <span><img src="{{url_for('static',filename='img/male-user.png')}}"/></span>
+                            <span><img src="{{url_for('static',filename='img/female-user.png')}}"/></span>
+                        </div>
+                    </div>
+                    <button type="button"class="signin-btn-unclicked">Register/Sign In</button>
+                </div>
+            </div>
+        {% endif %}
+        
+        </div>
+            {% block content %}
+            {% endblock content%}
+        </div>
+
+    </main>
+    <script type="text/javascript">
+        const char_maxlength=12;
+        const root=document.querySelector(":root");
+        const play_game_btn=document.querySelector(".start-game button[name=play-game]");
+        const avatar_select_elements=Array.from(document.querySelectorAll(".user-avatar-parent .user-avatar span"));
+        const user_name_tag=document.querySelector("input[name='user-name']");
+        const register_signup_btn=document.querySelector(".sign-in-container button[type='button']");
+        let base_url="{{request.url}}";
+        const full_url=base_url+"newuser";
+
+        // check whether user has registered or not.
+        const is_verifed=("{{verified}}".toLowerCase()==="true");
+        //Store user name
+        let user_name="";
+
+        //Default the avater of user
+        let avatar_selected="{{url_for('static',filename='img/any-user.png')}}";
+
+        //show play mode to user
+        if(play_game_btn!= null){
+            play_game_btn.addEventListener("click",function(e){
+            document.querySelector(".play-option").classList.toggle("show-play-option");
+        
+        });
+        }
+     
+        // Selected user clicked img file as a user avatar.
+        avatar_select_elements.forEach((span_ele)=>{
+            span_ele.addEventListener("click",function(e){
+                avatar_select_elements.forEach((span_ele)=>{
+                    span_ele.classList.remove("transformed-span");
+                });
+                this.classList.add("transformed-span");
+                avatar_selected=this.lastElementChild.getAttribute("src");
+            });
+        });
+
+        //If user has not regitered then ask to enter his/her name.
+        if (user_name_tag!=null){
+            user_name_tag.addEventListener("keyup",function(e){
+            let char_maxlength=parseInt(this.getAttribute("maxlength"));
+            if(this.value.length>char_maxlength){
+                
+                this.value=this.value.substring(0,char_maxlength);
+            }
+        });
+        }
+
+
+        //If user has not regitered then after clicking register btn register user name to local storage and 
+        //tell server that user has been registered to system.
+        if( register_signup_btn!=null){
+            register_signup_btn.addEventListener("click",function(e){
+                this.classList.toggle("signin-btn-clicked");
+                if(user_name_tag.value===""){
+                    user_name_tag.focus();
+                }
+                else{
+                    fetch(full_url)
+                    .then((resp)=>location.reload());
+                    let user_data={"user_name":user_name_tag.value,"user_avatar":avatar_selected};
+                    localStorage.setItem("user_info",JSON.stringify(user_data));
+                    
+                }
+            });
+        }
+        function checkUserStatus(){
+            if(is_verifed){
+                let user_data=JSON.parse(localStorage.getItem("user_info")) || {};
+                let user_data_length=Array.from(Object.keys(user_data)).length;
+                if(user_data_length!==0){
+                    user_name=user_data["user_name"].substring(0,char_maxlength);
+                    document.querySelector(".user-info").innerHTML=user_name;
+                    document.querySelector(".img-container img").setAttribute("src",user_data["user_avatar"]);
+                }
+
+                //Add back btn to home  
+                let regx= new RegExp("/newgame","gi")
+                if(base_url.match(regx)){
+                    document.querySelector(".back-btn").classList.add("remove-negmargin-left");
+                }
+                else{
+                    document.querySelector(".back-btn").classList.remove("remove-negmargin-left");
+                }
+               
+                
+            }
+        }
+        checkUserStatus();
+    </script>
+    {% block script %}{% endblock script %}
+</body>
+</html>
